@@ -1,62 +1,84 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400"></a></p>
+# Delpoy Laravel on AWS Lambda with Docker using Bref
 
-<p align="center">
-<a href="https://travis-ci.org/laravel/framework"><img src="https://travis-ci.org/laravel/framework.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+### Step 1. Create your project
 
-## About Laravel
+```
+curl -s https://laravel.build/larademo | bash
+```
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+### Step 2. install requirements and generate serverless.yml
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+```bash
+cd larademo
+./vendor/bin/sail up -d
+./vendor/bin/sail composer require bref/bref bref/laravel-bridge
+./vendor/bin/sail php artisan vendor:publish --tag=serverless-config
+./vendor/bin/sail down
+```
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+### Step 3. Create Dockerfile and deploy.sh, and modify serverless.yml
 
-## Learning Laravel
+```Dockerfile:Dockerfile
+FROM bref/php-80-fpm
+COPY . /var/task
+CMD [ "public/index.php" ]
+```
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+```bash:deploy.sh
+#!/bin/bash
+set -euxo pipefail
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains over 1500 video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+ACCOUNTID=$(aws sts get-caller-identity --query 'Account'| xargs)
+REGION=$(aws configure get region)
+APP_NAME=larademo
+ECR_TAG=$ACCOUNTID.dkr.ecr.$REGION.amazonaws.com/$APP_NAME:latest
+$(aws ecr get-login --no-include-email)
+docker build . -t $APP_NAME
+docker tag $APP_NAME $ECR_TAG
+docker push $ECR_TAG
+sls deploy --region $REGION --tag $ECR_TAG
+```
 
-## Laravel Sponsors
+```diff:serverless.yml
+service: laravel
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the Laravel [Patreon page](https://patreon.com/taylorotwell).
+provider:
+    name: aws
+    # The AWS region in which to deploy (us-east-1 is the default)
+    region: {opt:region, us-east-1}
+    # The stage of the application, e.g. dev, production, staging… ('dev' is the default)
+    stage: dev
+    runtime: provided.al2
 
-### Premium Partners
+package:
+    # Directories to exclude from deployment
+    exclude:
+        - node_modules/**
+        - public/storage
+        - resources/assets/**
+        - storage/**
+        - tests/**
 
-- **[Vehikl](https://vehikl.com/)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Cubet Techno Labs](https://cubettech.com)**
-- **[Cyber-Duck](https://cyber-duck.co.uk)**
-- **[Many](https://www.many.co.uk)**
-- **[Webdock, Fast VPS Hosting](https://www.webdock.io/en)**
-- **[DevSquad](https://devsquad.com)**
-- **[Curotec](https://www.curotec.com/)**
-- **[OP.GG](https://op.gg)**
+functions:
+    # This function runs the Laravel website/API
+    web:
+        image: ${opt:tag}
+        events:
+            -   httpApi: '*'
+```
 
-## Contributing
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+### Step 4. Deploy!
 
-## Code of Conduct
+```bash
+aws ecr create-repository --repository-name larademo # run this only once
+sh deploy.sh # this build, push and deploy
+```
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+### References
 
-## Security Vulnerabilities
-
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
-
-## License
-
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+- https://aws.amazon.com/jp/blogs/compute/building-php-lambda-functions-with-docker-container-images/
+- https://bref.sh/docs/frameworks/laravel.html
+- https://laravel.com/docs/8.x/installation
+- https://laravel.com/docs/8.x/sail#introduction
+- https://please-sleep.cou929.nu/bash-strict-mode.html
