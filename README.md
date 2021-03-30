@@ -16,27 +16,12 @@ cd larademo
 ./vendor/bin/sail down
 ```
 
-### Step 3. Create Dockerfile and deploy.sh, and modify serverless.yml
+### Step 3. Create Dockerfile and modify serverless.yml
 
 ```Dockerfile:Dockerfile
 FROM bref/php-80-fpm
 COPY . /var/task
 CMD [ "public/index.php" ]
-```
-
-```bash:deploy.sh
-#!/bin/bash
-set -euxo pipefail
-
-ACCOUNTID=$(aws sts get-caller-identity --query 'Account'| xargs)
-REGION=$(aws configure get region)
-APP_NAME=larademo
-ECR_TAG=$ACCOUNTID.dkr.ecr.$REGION.amazonaws.com/$APP_NAME:latest
-aws ecr get-login-password | docker login --username AWS --password-stdin https://$ACCOUNTID.dkr.ecr.$REGION.amazonaws.com
-docker build . -t $APP_NAME
-docker tag $APP_NAME $ECR_TAG
-docker push $ECR_TAG
-sls deploy --region $REGION --tag $ECR_TAG
 ```
 
 ```diff:serverless.yml
@@ -50,6 +35,10 @@ provider:
     stage: dev
     runtime: provided.al2
 
+    ecr:
+        images:
+            laravel:
+                path: ./
 package:
     # Directories to exclude from deployment
     exclude:
@@ -62,7 +51,8 @@ package:
 functions:
     # This function runs the Laravel website/API
     web:
-        image: ${opt:tag}
+        image:
+            name: laravel
         events:
             -   httpApi: '*'
 ```
@@ -71,8 +61,7 @@ functions:
 ### Step 4. Deploy!
 
 ```bash
-aws ecr create-repository --repository-name larademo # run this only once
-sh deploy.sh # this build, push and deploy
+sls deploy --region ap-northeast-1 # use your region
 ```
 
 ### References
