@@ -32,7 +32,7 @@ ACCOUNTID=$(aws sts get-caller-identity --query 'Account'| xargs)
 REGION=$(aws configure get region)
 APP_NAME=larademo
 ECR_TAG=$ACCOUNTID.dkr.ecr.$REGION.amazonaws.com/$APP_NAME:latest
-$(aws ecr get-login --no-include-email)
+aws ecr get-login-password | docker login --username AWS --password-stdin https://$ACCOUNTID.dkr.ecr.$REGION.amazonaws.com
 docker build . -t $APP_NAME
 docker tag $APP_NAME $ECR_TAG
 docker push $ECR_TAG
