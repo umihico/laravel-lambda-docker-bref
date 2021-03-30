@@ -8,6 +8,10 @@ provider:
     stage: dev
     runtime: provided.al2
 
+    ecr:
+        images:
+            larademo:
+                path: ./
 package:
     # Directories to exclude from deployment
     exclude:
@@ -20,6 +24,7 @@ package:
 functions:
     # This function runs the Laravel website/API
     web:
-        image: ${opt:tag}
+        image:
+            name: larademo
         events:
             -   httpApi: '*'
